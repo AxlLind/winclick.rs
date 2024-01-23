@@ -88,16 +88,15 @@ pub fn send_input(inputs: &[Input]) -> Result<()> {
     Ok(())
 }
 
-pub fn run_automation(actions: &[(Duration, &str)]) -> Result<()> {
+pub fn run_automation(actions: &[(Duration, Vec<Input>)]) -> Result<()> {
     let mut activated = vec![Instant::now(); actions.len()];
     let mut active = false;
-    let mut inputs = Vec::new();
     loop {
         let keystate = unsafe { GetAsyncKeyState(VK_F6.0 as _) } as u16;
         if keystate == 0x8001 {
             active = !active;
             println!("active={}", active);
-            thread::sleep(Duration::from_millis(300));
+            thread::sleep(Duration::from_millis(100));
             if active {
                 let now = std::time::Instant::now();
                 for t in &mut activated {
@@ -114,16 +113,9 @@ pub fn run_automation(actions: &[(Duration, &str)]) -> Result<()> {
             if now < activated[i] + actions[i].0 {
                 continue;
             }
-            // TODO: Use the action to generate these
-            inputs.extend([
-                Input::click_mouse(None, false),
-                Input::click_mouse(None, true),
-            ]);
+            send_input(&actions[i].1)?;
             activated[i] = now;
-            println!("{:?}", now);
         }
-        send_input(&inputs)?;
-        inputs.clear();
         thread::sleep(Duration::from_millis(1));
     }
 }
