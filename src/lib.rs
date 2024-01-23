@@ -1,5 +1,9 @@
+use std::time::{Duration, Instant};
+use std::thread;
+
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput,
+    GetAsyncKeyState,
     INPUT_0,
     INPUT_KEYBOARD,
     INPUT_MOUSE,
@@ -12,6 +16,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_MOVE,
     MOUSEINPUT,
+    VK_F6,
     VIRTUAL_KEY,
 };
 use windows::core::{Result, Error};
@@ -70,6 +75,9 @@ impl Input {
 }
 
 pub fn send_input(inputs: &[Input]) -> Result<()> {
+    if inputs.is_empty() {
+        return Ok(());
+    }
     // SAFETY: Always safe to transmute repr(transparent) structs
     let inputs = unsafe { std::mem::transmute(inputs) };
     // SAFETY: Only unsafe due to ffi call.
@@ -78,4 +86,44 @@ pub fn send_input(inputs: &[Input]) -> Result<()> {
         return Err(Error::from_win32());
     }
     Ok(())
+}
+
+pub fn run_automation(actions: &[(Duration, &str)]) -> Result<()> {
+    let mut activated = vec![Instant::now(); actions.len()];
+    let mut active = false;
+    let mut inputs = Vec::new();
+    loop {
+        let keystate = unsafe { GetAsyncKeyState(VK_F6.0 as _) } as u16;
+        if keystate == 0x8001 {
+            active = !active;
+            println!("active={}", active);
+            thread::sleep(Duration::from_millis(300));
+            if active {
+                let now = std::time::Instant::now();
+                for t in &mut activated {
+                    *t = now;
+                }
+            }
+        }
+        if !active {
+            thread::sleep(Duration::from_millis(100));
+            continue;
+        }
+        let now = Instant::now();
+        for i in 0..actions.len() {
+            if now < activated[i] + actions[i].0 {
+                continue;
+            }
+            // TODO: Use the action to generate these
+            inputs.extend([
+                Input::click_mouse(None, false),
+                Input::click_mouse(None, true),
+            ]);
+            activated[i] = now;
+            println!("{:?}", now);
+        }
+        send_input(&inputs)?;
+        inputs.clear();
+        thread::sleep(Duration::from_millis(1));
+    }
 }
